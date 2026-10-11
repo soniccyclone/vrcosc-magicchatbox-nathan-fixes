@@ -213,6 +213,11 @@ namespace vrcosc_magicchatbox.ViewModels.Models
         {
             try
             {
+                if (AppleMusicMetadata.IsAppleMusic(id))
+                {
+                    return "Apple Music";
+                }
+
                 if (!id.Contains('.') && !id.Contains('!') && char.IsUpper(id[0]))
                 {
                     return id;
