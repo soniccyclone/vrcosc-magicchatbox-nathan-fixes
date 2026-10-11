@@ -1,11 +1,23 @@
 using System;
+using vrcosc_magicchatbox.Classes.Modules.Media;
 
 namespace vrcosc_magicchatbox.Classes.Modules.Lyrics;
+
+public enum TrackLengthTrust
+{
+    Trusted,
+
+    Waiting,
+
+    Unknown,
+}
 
 public static class LyricsLookupPolicy
 {
     public static readonly TimeSpan MaxTrackLength = TimeSpan.FromMinutes(15);
     public static readonly TimeSpan MinTrackLength = TimeSpan.FromSeconds(25);
+    public static readonly TimeSpan TimelineSettleWindow = TimeSpan.FromSeconds(3);
+    public static readonly TimeSpan TimelineLeadWindow = TimeSpan.FromSeconds(1);
 
     private static readonly string[] NotMusicMarkers =
     {
@@ -62,5 +74,26 @@ public static class LyricsLookupPolicy
         }
 
         return true;
+    }
+
+    public static TrackLengthTrust JudgeTrackLength(in TrackLengthEvidence evidence, DateTime nowUtc)
+    {
+        if (evidence.TitleChangedUtc == default)
+            return TrackLengthTrust.Trusted;
+
+        if (evidence.LengthChangedUtc > evidence.TitleChangedUtc)
+            return TrackLengthTrust.Trusted;
+
+        bool arrivedJustBeforeTitle = evidence.LengthChangedUtc != default
+            && evidence.TitleChangedUtc - evidence.LengthChangedUtc <= TimelineLeadWindow;
+        bool belongsToPreviousTitle = evidence.PreviousTitleChangedUtc != default
+            && evidence.LengthChangedUtc - evidence.PreviousTitleChangedUtc < TimelineSettleWindow;
+
+        if (arrivedJustBeforeTitle && !belongsToPreviousTitle)
+            return TrackLengthTrust.Trusted;
+
+        return nowUtc - evidence.TitleChangedUtc < TimelineSettleWindow
+            ? TrackLengthTrust.Waiting
+            : TrackLengthTrust.Unknown;
     }
 }

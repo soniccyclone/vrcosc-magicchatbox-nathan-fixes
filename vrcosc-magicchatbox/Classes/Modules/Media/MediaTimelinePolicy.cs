@@ -17,6 +17,12 @@ public enum TimelineDecision
 
 public readonly record struct TimelineSnapshot(TimeSpan Full, TimeSpan Current);
 
+public readonly record struct TrackLengthEvidence(
+    TimeSpan Length,
+    DateTime TitleChangedUtc,
+    DateTime PreviousTitleChangedUtc,
+    DateTime LengthChangedUtc);
+
 public readonly record struct TimelineEvaluationInput
 {
     public TimeSpan IncomingFull { get; init; }
