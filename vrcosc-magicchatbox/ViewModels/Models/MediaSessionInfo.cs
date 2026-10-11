@@ -133,6 +133,25 @@ namespace vrcosc_magicchatbox.ViewModels.Models
             }
         }
 
+        public bool ApplyReportedMetadata(string? sourceAppId, SessionMetadata reported, bool markTimelineStale)
+        {
+            var metadata = AppleMusicMetadata.Normalize(sourceAppId, reported);
+
+            bool changed = !string.Equals(Title, metadata.Title, StringComparison.Ordinal) ||
+                           !string.Equals(Artist, metadata.Artist, StringComparison.Ordinal) ||
+                           !string.Equals(AlbumTitle, metadata.AlbumTitle, StringComparison.Ordinal);
+
+            AlbumArtist = metadata.AlbumArtist;
+            AlbumTitle = metadata.AlbumTitle;
+            Artist = metadata.Artist;
+            Title = metadata.Title;
+
+            if (markTimelineStale && changed)
+                MarkTimelineStale(restartStaleClock: true);
+
+            return changed;
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private void SaveOrDeleteSettings()
