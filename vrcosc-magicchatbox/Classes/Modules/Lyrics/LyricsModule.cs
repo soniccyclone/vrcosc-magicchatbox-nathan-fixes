@@ -34,6 +34,7 @@ public partial class LyricsModule : ObservableObject, IModule
     private Timer? _timer;
     private LyricTrack _track = LyricTrack.Empty;
     private string _trackIdentity = string.Empty;
+    private bool _lookupPending;
     private int _lookupInFlight;
     private bool _disposed;
 
@@ -88,6 +89,7 @@ public partial class LyricsModule : ObservableObject, IModule
 
         _track = LyricTrack.Empty;
         _trackIdentity = string.Empty;
+        _lookupPending = false;
         _display.Reset("Stopped");
         return Task.CompletedTask;
     }
@@ -119,6 +121,7 @@ public partial class LyricsModule : ObservableObject, IModule
             {
                 _track = LyricTrack.Empty;
                 _trackIdentity = string.Empty;
+                _lookupPending = false;
                 _display.Reset(DescribeNoSource());
                 _display.Attach(ResolvePlacement(null));
                 return;
@@ -136,7 +139,14 @@ public partial class LyricsModule : ObservableObject, IModule
                 _display.SuppressMediaTitle = false;
                 _display.NowPlaying = $"{source.Artist} - {source.Title}";
                 _display.StatusText = "Looking up lyrics...";
-                BeginLookup(source);
+                _lookupPending = true;
+            }
+
+            if (_lookupPending)
+            {
+                if (!source.WaitingForLength && BeginLookup(source))
+                    _lookupPending = false;
+
                 return;
             }
 
@@ -186,10 +196,10 @@ public partial class LyricsModule : ObservableObject, IModule
         }
     }
 
-    private void BeginLookup(PositionSource source)
+    private bool BeginLookup(PositionSource source)
     {
         if (Interlocked.Exchange(ref _lookupInFlight, 1) == 1)
-            return;
+            return false;
 
         string identity = source.Identity;
 
@@ -233,6 +243,8 @@ public partial class LyricsModule : ObservableObject, IModule
                 Interlocked.Exchange(ref _lookupInFlight, 0);
             }
         });
+
+        return true;
     }
 
     private string BuildMissMessage(LyricsQuery query)
@@ -285,7 +297,8 @@ public partial class LyricsModule : ObservableObject, IModule
                 TimeSpan.FromMilliseconds(Math.Max(0, _spotify.DurationMs)),
                 SpotifySourceName,
                 $"spotify:{_spotify.TrackId}",
-                true);
+                true,
+                false);
         }
 
         if (!_integrationSettings.IntgrLyrics_MediaLink)
@@ -308,16 +321,21 @@ public partial class LyricsModule : ObservableObject, IModule
             return null;
 
         var session = sessions[choice.Index];
+        string title = session.Title;
+        string artist = session.Artist;
+        var length = session.LengthEvidence;
+        var trust = LyricsLookupPolicy.JudgeTrackLength(length, DateTime.UtcNow);
 
         return new PositionSource(
-            session.Title,
-            session.Artist,
+            title,
+            artist,
             session.AlbumTitle,
             session.CurrentTime,
-            session.FullTime,
+            trust == TrackLengthTrust.Trusted ? length.Length : TimeSpan.Zero,
             MediaSourceName,
-            $"smtc:{session.Artist}|{session.Title}",
-            choice.IsPlaying);
+            $"smtc:{artist}|{title}",
+            choice.IsPlaying,
+            trust == TrackLengthTrust.Waiting);
     }
 
     private static LyricsSessionPlayback ToPlayback(GlobalSystemMediaTransportControlsSessionPlaybackStatus status)
@@ -350,5 +368,6 @@ public partial class LyricsModule : ObservableObject, IModule
         TimeSpan Duration,
         string SourceName,
         string Identity,
-        bool IsPlaying);
+        bool IsPlaying,
+        bool WaitingForLength);
 }

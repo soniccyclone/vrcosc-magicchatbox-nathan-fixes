@@ -276,20 +276,19 @@ public class MediaLinkModule : vrcosc_magicchatbox.Services.IMediaLinkService
         GlobalSystemMediaTransportControlsSessionMediaProperties properties,
         bool staleTimelineOnChange)
     {
-        bool changed = !string.Equals(sessionInfo.Title, properties.Title, StringComparison.Ordinal) ||
-                       !string.Equals(sessionInfo.Artist, properties.Artist, StringComparison.Ordinal) ||
-                       !string.Equals(sessionInfo.AlbumTitle, properties.AlbumTitle, StringComparison.Ordinal);
+        string? sourceAppId = sessionInfo.Session?.Id;
+        bool changed = sessionInfo.ApplyReportedMetadata(
+            sourceAppId,
+            new SessionMetadata(properties.Title, properties.Artist, properties.AlbumTitle, properties.AlbumArtist),
+            staleTimelineOnChange);
 
         if (changed)
+        {
             LastMediaChangeTime = DateTime.UtcNow;
 
-        sessionInfo.AlbumArtist = properties.AlbumArtist;
-        sessionInfo.AlbumTitle = properties.AlbumTitle;
-        sessionInfo.Artist = properties.Artist;
-        sessionInfo.Title = properties.Title;
-
-        if (staleTimelineOnChange && changed)
-            sessionInfo.MarkTimelineStale(restartStaleClock: true);
+            if (!string.Equals(sessionInfo.Artist, properties.Artist, StringComparison.Ordinal))
+                Logging.WriteInfo($"MediaLink: {sourceAppId} reported artist \"{properties.Artist}\", using \"{sessionInfo.Artist}\"");
+        }
 
         return changed;
     }

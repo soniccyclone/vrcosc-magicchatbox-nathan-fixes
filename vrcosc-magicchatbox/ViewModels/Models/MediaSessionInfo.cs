@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using vrcosc_magicchatbox.Classes.DataAndSecurity;
 using vrcosc_magicchatbox.Classes.Modules;
 using vrcosc_magicchatbox.Classes.Modules.Media;
@@ -133,6 +134,31 @@ namespace vrcosc_magicchatbox.ViewModels.Models
             }
         }
 
+        public bool ApplyReportedMetadata(string? sourceAppId, SessionMetadata reported, bool markTimelineStale)
+        {
+            var metadata = AppleMusicMetadata.Normalize(sourceAppId, reported);
+
+            bool changed = !string.Equals(Title, metadata.Title, StringComparison.Ordinal) ||
+                           !string.Equals(Artist, metadata.Artist, StringComparison.Ordinal) ||
+                           !string.Equals(AlbumTitle, metadata.AlbumTitle, StringComparison.Ordinal);
+
+            if (changed)
+            {
+                Volatile.Write(ref _previousTitleChangedTicks, Volatile.Read(ref _titleChangedTicks));
+                Volatile.Write(ref _titleChangedTicks, DateTime.UtcNow.Ticks);
+            }
+
+            AlbumArtist = metadata.AlbumArtist;
+            AlbumTitle = metadata.AlbumTitle;
+            Artist = metadata.Artist;
+            Title = metadata.Title;
+
+            if (markTimelineStale && changed)
+                MarkTimelineStale(restartStaleClock: true);
+
+            return changed;
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
         private void SaveOrDeleteSettings()
@@ -180,13 +206,21 @@ namespace vrcosc_magicchatbox.ViewModels.Models
 
         private void UpdateFriendlyAppName()
         {
-            string id = Session.Id;
+            FriendlyAppName = FriendlyAppNameFor(Session.Id);
+        }
+
+        public static string FriendlyAppNameFor(string id)
+        {
             try
             {
+                if (AppleMusicMetadata.IsAppleMusic(id))
+                {
+                    return "Apple Music";
+                }
+
                 if (!id.Contains('.') && !id.Contains('!') && char.IsUpper(id[0]))
                 {
-                    FriendlyAppName = id;
-                    return;
+                    return id;
                 }
 
                 if (id.Contains('!'))
@@ -201,16 +235,15 @@ namespace vrcosc_magicchatbox.ViewModels.Models
 
                 if (id.Contains("OperaSoftware"))
                 {
-                    FriendlyAppName = "Opera";
-                    return;
+                    return "Opera";
                 }
 
-                FriendlyAppName = id;
+                return id;
             }
             catch (Exception ex)
             {
                 Logging.WriteException(ex, MSGBox: false);
-                FriendlyAppName = id;
+                return id;
             }
         }
 
@@ -390,6 +423,26 @@ namespace vrcosc_magicchatbox.ViewModels.Models
 
         private TimeSpan _FullTime = new TimeSpan(0, 0, 0);
 
+        private long _titleChangedTicks;
+        private long _previousTitleChangedTicks;
+        private long _lengthChangedTicks;
+
+        public TrackLengthEvidence LengthEvidence
+        {
+            get
+            {
+                long titleChanged = Volatile.Read(ref _titleChangedTicks);
+                long previousTitleChanged = Volatile.Read(ref _previousTitleChangedTicks);
+                long lengthChanged = Volatile.Read(ref _lengthChangedTicks);
+
+                return new TrackLengthEvidence(
+                    FullTime,
+                    new DateTime(titleChanged, DateTimeKind.Utc),
+                    new DateTime(previousTitleChanged, DateTimeKind.Utc),
+                    new DateTime(lengthChanged, DateTimeKind.Utc));
+            }
+        }
+
         public TimeSpan FullTime
         {
             get { return _FullTime; }
@@ -398,6 +451,7 @@ namespace vrcosc_magicchatbox.ViewModels.Models
                 if (_FullTime != value)
                 {
                     _FullTime = value;
+                    Volatile.Write(ref _lengthChangedTicks, DateTime.UtcNow.Ticks);
                     NotifyPropertyChanged(nameof(FullTime));
                     NotifyPropertyChanged(nameof(TimePosition));
                 }
