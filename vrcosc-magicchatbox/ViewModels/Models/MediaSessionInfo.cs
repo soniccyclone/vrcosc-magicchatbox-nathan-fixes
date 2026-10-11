@@ -206,13 +206,16 @@ namespace vrcosc_magicchatbox.ViewModels.Models
 
         private void UpdateFriendlyAppName()
         {
-            string id = Session.Id;
+            FriendlyAppName = FriendlyAppNameFor(Session.Id);
+        }
+
+        public static string FriendlyAppNameFor(string id)
+        {
             try
             {
                 if (!id.Contains('.') && !id.Contains('!') && char.IsUpper(id[0]))
                 {
-                    FriendlyAppName = id;
-                    return;
+                    return id;
                 }
 
                 if (id.Contains('!'))
@@ -227,16 +230,15 @@ namespace vrcosc_magicchatbox.ViewModels.Models
 
                 if (id.Contains("OperaSoftware"))
                 {
-                    FriendlyAppName = "Opera";
-                    return;
+                    return "Opera";
                 }
 
-                FriendlyAppName = id;
+                return id;
             }
             catch (Exception ex)
             {
                 Logging.WriteException(ex, MSGBox: false);
-                FriendlyAppName = id;
+                return id;
             }
         }
 
